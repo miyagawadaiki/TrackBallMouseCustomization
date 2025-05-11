@@ -1,162 +1,60 @@
--- HANDLE SCROLLING
+local scrollMode = false
+local zoomMode = false
+local undoMode = false
 
-local deferred = false
-local deferred_magnify = false
-local scaled = false 
-
-local function appTitle()
-   app = hs.application.frontmostApplication()
-   if app ~= nil then
-      return app:title()
-   end
-end
-
-overrideRightMouseDown = hs.eventtap.new({ hs.eventtap.event.types.rightMouseDown }, function(e)
-    deferred = true
-    print("down (deferred, scaled)=", deferred, scaled)
-    return true
+-- 変数の監視
+-- F1キーを押すたびにモードをトグル
+hs.hotkey.bind({}, "F1", function()
+    scrollMode = not scrollMode
+    print("Scroll mode: ", scrollMode)
+    --hs.alert.show("Scroll mode: " .. (scrollMode and "ON" or "OFF"), 0.3)
+end)
+hs.hotkey.bind({}, "F2", function()
+    zoomMode = not zoomMode
+    print("Zoom mode: ", zoomMode)
+    --hs.alert.show("Zoom mode: " .. (zoomMode and "ON" or "OFF"), 0.3)
+end)
+hs.hotkey.bind({}, "F3", function()
+    undoMode = not undoMode
+    --hs.alert.show("undo mode: " .. (undoMode and "ON" or "OFF"), 0.3)
 end)
 
-overrideRightMouseUp = hs.eventtap.new({ hs.eventtap.event.types.rightMouseUp }, function(e)
-    print("up")
-    if (deferred and not scaled) then
-        print('-- deferred, scaled=', deferred, scaled)
-        overrideRightMouseDown:stop()
-        overrideRightMouseUp:stop()
-        deferred = false 
-        hs.eventtap.rightClick(e:location())
-        overrideRightMouseDown:start()
-        overrideRightMouseUp:start()
+
+-- マウス移動を監視してスクロールに変換
+local eventTap = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(e)
+    if scrollMode then
+        local dx = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaX)
+        local dy = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaY)
+        print(dx, dy)
+        hs.eventtap.scrollWheel({-dy, -dx}, {}, "pixel")
+        return true
+    elseif zoomMode then
+        local dx = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaX)
+        print(dx)
+        if dx > 0 then
+            print("zoom in")
+            hs.eventtap.keyStroke({"cmd"}, ";")
+        elseif dx < 0 then
+            print("zoom out")
+            hs.eventtap.keyStroke({"cmd"}, "-")
+        else
+            print("not zoom") 
+        end
         return true
     end
-
-    print('-- deferred, scaled=', deferred, scaled)
-    deferred = false 
-    scaled = false
     return false
-end)
+end):start()
 
-
-local oldmousepos = {}
-local scrollmult = -4   -- negative multiplier makes mouse work like traditional scrollwheel
-dragRightToScroll = hs.eventtap.new({ hs.eventtap.event.types.rightMouseDragged }, function(e)
-    -- print("scroll");
-    deferred = false
-
-    if appTitle() == 'Unity' then
-        return false
-    end
-
-
-    oldmousepos = hs.mouse.getAbsolutePosition()    
-
-    local dx = e:getProperty(hs.eventtap.event.properties['mouseEventDeltaX'])
-    local dy = e:getProperty(hs.eventtap.event.properties['mouseEventDeltaY'])
-    local scroll = hs.eventtap.event.newScrollEvent({dx * scrollmult, dy * scrollmult},{},'pixel')
-
-    -- put the mouse back
-    hs.mouse.setAbsolutePosition(oldmousepos)
-
-
-    return true, {scroll}
-end)
-
-
-scrollToMagnify = hs.eventtap.new({ hs.eventtap.event.types.scrollWheel }, function(e)
-    if not (deferred_magnify) then -- or hs.eventtap.checkMouseButtons().right
-        return false
-    end
-
-    print('-- zoom')
-    -- print('mouse name', hs.mouse.names())
-
-    -- local wheel_x = e:getProperty(hs.eventtap.event.properties.scrollWheelEventDeltaAxis2)
-    local wheel_val = e:getProperty(hs.eventtap.event.properties.scrollWheelEventDeltaAxis1)
-    if wheel_val ~= 0 then
-        -- scaled = true
-        -- print(wheel_val)
-        if wheel_val > 0 then
-            print('-- -- zoom out')
-            hs.eventtap.keyStroke({'cmd'}, '-', 100)
-        else
-            print('-- -- zoom in')
-			if appTitle() == 'Notion' then
-				print('-- -- -- Notion')
-				hs.eventtap.keyStroke({'cmd'}, '^', 100)
-			else
-	            hs.eventtap.keyStroke({'shift','cmd'}, ';', 100)
-			end
+-- スクロールホイールで Command+Z / Y
+local scrollTap = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(e)
+    if undoMode then
+        local dy = e:getProperty(hs.eventtap.event.properties.scrollWheelEventDeltaAxis1)
+        if dy > 0 then
+            hs.eventtap.keyStroke({"cmd","shift"}, "z")
+        elseif dy < 0 then
+            hs.eventtap.keyStroke({"cmd"}, "z")
         end
-    else
-        
+        return true
     end
-
-    return true
-end)
-
-
-local magnifyButton = 2
-overrideOtherMouseDown = hs.eventtap.new({
-	hs.eventtap.event.types.otherMouseDown
-}, function(e)
-	local pressedMouseButton = e:getProperty(
-								  hs.eventtap.event.properties['mouseEventButtonNumber'])
-	-- $B%\%?%s(B2$B!J%[%$!<%k$N%\%?%s$r2!$7$?;~$N=hM}!K(B
-	if magnifyButton == pressedMouseButton then
-		print(pressedMouseButton)
-
-		-- $B$b$7(BGIMP$B$r;H$C$F$$$k$H$-$OL5;k(B
-		if appTitle() == 'GIMP-2.10' then
-			print('This is GIMP')
-		-- $B%[%$!<%k$K$h$k%:!<%`5!G=$r%9%$%C%A$9$k(B
-		else
-			-- $BM-8z2=$9$k(B
-			if not deferred_magnify then
-				deferred_magnify = true
-				print("switched to magnify")
-				print("-- deferred_magnify, scaled=", deferred_magnify, scaled)
-				return true
-			-- $BL58z2=$9$k(B
-			else
-				deferred_magnify = false 
-				return true
-			end
-		end
-	end
-
-	return false
-end)
-
-overrideOtherMouseUp = hs.eventtap.new({
-	hs.eventtap.event.types.otherMouseUp
-}, function(e)
-    print("up")
-	local pressedMouseButton = e:getProperty(
-                                  hs.eventtap.event.properties['mouseEventButtonNumber'])
-	if magnifyButton == pressedMouseButton then
-		if deferred_magnify then
-			print('-- deferred, scaled=', deferred_magnify, scaled)
-			overrideOtherMouseDown:stop()
-			overrideOtherMouseUp:stop()
-			deferred_ = false 
-			hs.eventtap.otherClick(e:location(), 0, pressedMouseButton)
-			overrideOtherMouseDown:start()
-			overrideOtherMouseUp:start()
-			return true
-		end
-	end
-
-    deferred_magnify = false 
-    scaled = false
-    print('-- deferred, scaled=', deferred_magnify, scaled)
     return false
-end)
-
-
-
-overrideRightMouseDown:start()
-overrideRightMouseUp:start()
-overrideOtherMouseDown:start()
-overrideOtherMouseUp:start()
-dragRightToScroll:start()
-scrollToMagnify:start()
+end):start()
