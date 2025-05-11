@@ -4,42 +4,52 @@ local lastMousePosition = nil
 local inactivityTimer = nil
 local scrollSpeed = 10  -- スクロールの感度（大きくすると速くなる）
 
--- 拡大縮小モード制御フラグ
-local isZoomMode = false
-local zoomExecResolution = 20.0  -- ズームを実行する分解能
-local totalMovementX = 0
-local zoomExecThreshold = 0
+-- 拡大縮小モード
+local isZoomMode = false  -- 制御フラグ
+local zoomExecResolution = 30.0  -- ズームを実行する分解能
+local zoomExecThreshold = 0      -- ズームを実行する閾値
+local totalMovementY = 0  -- モード開始からの合計移動量
 
 
 local alertId = nil
 
+
+-- モードを制御する (命じられたモードを起動／終了させ、それまでのモードを終了させる)
 function controlMode(mode)
+	-- Scrollを命じられたとき
 	if mode == "Scroll" then
+		-- もしすでにScrollモードなら終わるだけ
 		if isScrollMode then
 			exitScrollMode()
 			return
 		end
 
+		-- 他のモードが走っているなら終了させる
 		if isZoomMode then
 			exitZoomMode()
 		--elseif isUndoMode then
 		--	exitUndoMode()
 		end
 
+		-- Scrollモードを開始
 		enterScrollMode()
 	
+	-- Zoomを命じられたとき
 	elseif mode == "Zoom" then
+		-- もしすでにZoomモードなら終わるだけ
 		if isZoomMode then
 			exitZoomMode()
 			return
 		end
 
+		-- 他のモードが走っているなら終了させる
 		if isScrollMode then
 			exitScrollMode()
 		--elseif isUndoMode then
 		--	exitUndoMode()
 		end
 
+		-- Zoomモードを開始
 		enterZoomMode()
 	end
 end
@@ -86,7 +96,7 @@ end
 function enterZoomMode()
     isZoomMode = true
     lastMousePosition = hs.mouse.absolutePosition()
-	totalMovementX = 0.0
+	totalMovementY = 0.0
 	zoomExecThreshold = 0.0
     showTempAlert("Zoom Mode ON", 0.4)
     startInactivityTimer()
@@ -145,15 +155,15 @@ mouseTracker = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(ev
 
 		-- ズーム
 		else
-			totalMovementX = totalMovementX + dx
-			print(string.format("Mouse moved: dx = %.2f, total = %.2f", dx, totalMovementX))
+			totalMovementY = totalMovementY + dy
+			print(string.format("Mouse moved: dy = %.2f, total = %.2f", dy, totalMovementY))
 			-- 拡大 or 縮小
-			if dx > 0 and totalMovementX > zoomExecThreshold + zoomExecResolution then
+			if dy > 0 and totalMovementY > zoomExecThreshold + zoomExecResolution then
 				-- ズームインを実行
 				hs.eventtap.keyStroke({"cmd"}, ";")
 				-- 閾値を更新
 				zoomExecThreshold = zoomExecThreshold + zoomExecResolution
-			elseif dx < 0 and totalMovementX < zoomExecThreshold - zoomExecResolution then
+			elseif dy < 0 and totalMovementY < zoomExecThreshold - zoomExecResolution then
 				-- ズームアウトを実行
 				hs.eventtap.keyStroke({"cmd"}, "-")
 				-- 閾値を更新
