@@ -1,8 +1,11 @@
+-- モード自動終了までの時間
+local autoExitDuration = 0.6
+
 -- スクロールモード制御フラグ
 local isScrollMode = false
 local lastMousePosition = nil
 local inactivityTimer = nil
-local scrollSpeed = 10  -- スクロールの感度（大きくすると速くなる）
+local scrollSpeed = 20  -- スクロールの感度（大きくすると速くなる）
 
 -- 拡大縮小モード
 local isZoomMode = false  -- 制御フラグ
@@ -125,7 +128,7 @@ end
 
 function startInactivityTimer()
     if inactivityTimer then inactivityTimer:stop() end
-    inactivityTimer = hs.timer.doAfter(1, function()
+    inactivityTimer = hs.timer.doAfter(autoExitDuration, function()
         if isScrollMode then
             exitScrollMode()
 		elseif isZoomMode then
@@ -151,12 +154,12 @@ mouseTracker = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(ev
 		if isScrollMode then
 
 			-- スクロールイベント送信（dyは方向反転）
-			hs.eventtap.event.newScrollEvent({ -dx * scrollSpeed, -dy * scrollSpeed }, {}, "pixel"):post()
+			hs.eventtap.event.newScrollEvent({ -dx * scrollSpeed, dy * scrollSpeed }, {}, "pixel"):post()
 
 		-- ズーム
 		else
 			totalMovementY = totalMovementY + dy
-			print(string.format("Mouse moved: dy = %.2f, total = %.2f", dy, totalMovementY))
+			--print(string.format("Mouse moved: dy = %.2f, total = %.2f", dy, totalMovementY))
 			-- 拡大 or 縮小
 			if dy > 0 and totalMovementY > zoomExecThreshold + zoomExecResolution then
 				-- ズームインを実行
