@@ -1,6 +1,9 @@
 -- モード自動終了までの時間
 local autoExitDuration = 0.6
 
+-- スクロールとズームを許すフラグ
+local isScrollAndZoomMode = false
+
 -- スクロールモード制御フラグ
 local isScrollMode = false
 local lastMousePosition = nil
@@ -9,113 +12,41 @@ local scrollSpeed = 20  -- スクロールの感度（大きくすると速く�
 
 -- 拡大縮小モード
 local isZoomMode = false  -- 制御フラグ
-local zoomExecResolution = 30.0  -- ズームを実行する分解能
-local zoomExecThreshold = 0      -- ズームを実行する閾値
-local totalMovementY = 0  -- モード開始からの合計移動量
+--local zoomExecResolution = 30.0  -- ズームを実行する分解能
+--local zoomExecThreshold = 0      -- ズームを実行する閾値
+--local totalMovementY = 0  -- モード開始からの合計移動量
 
 
 local alertId = nil
 
 
--- モードを制御する (命じられたモードを起動／終了させ、それまでのモードを終了させる)
-function controlMode(mode)
-	-- Scrollを命じられたとき
-	if mode == "Scroll" then
-		-- もしすでにScrollモードなら終わるだけ
-		if isScrollMode then
-			exitScrollMode()
-			return
-		end
-
-		-- 他のモードが走っているなら終了させる
-		if isZoomMode then
-			exitZoomMode()
-		--elseif isUndoMode then
-		--	exitUndoMode()
-		end
-
-		-- Scrollモードを開始
-		enterScrollMode()
-	
-	-- Zoomを命じられたとき
-	elseif mode == "Zoom" then
-		-- もしすでにZoomモードなら終わるだけ
-		if isZoomMode then
-			exitZoomMode()
-			return
-		end
-
-		-- 他のモードが走っているなら終了させる
-		if isScrollMode then
-			exitScrollMode()
-		--elseif isUndoMode then
-		--	exitUndoMode()
-		end
-
-		-- Zoomモードを開始
-		enterZoomMode()
-	end
-end
-
-
--- スクロールモードをスイッチする
-function toggleScrollMode()
-    if isScrollMode then
-        exitScrollMode()
+function toggleScrollAndZoom()
+    if isScrollAndZoomMode then
+        exitScrollAndZoomMode()
     else
-        enterScrollMode()
+        enterScrollAndZoomMode()
     end
 end
 
--- スクロールモードに入る
-function enterScrollMode()
-    isScrollMode = true
+-- スクロール&ズームモードに入る
+function enterScrollAndZoomMode()
+    isScrollAndZoomMode = true
+	isScrollMode = false
+	isZoomMode = false
     lastMousePosition = hs.mouse.absolutePosition()
-    showTempAlert("Scroll Mode ON", 0.4)
+    showTempAlert("Scroll & Zoom Mode ON", 0.4)
     startInactivityTimer()
 end
 
--- スクロールモードから出る
-function exitScrollMode()
-    isScrollMode = false
-    showTempAlert("Scroll Mode OFF", 0.4)
+-- スクロール&ズームモードから出る
+function exitScrollAndZoomMode()
+    isScrollAndZoomMode = false
+    showTempAlert("Scroll & Zoom Mode OFF", 0.4)
     if inactivityTimer then
         inactivityTimer:stop()
         inactivityTimer = nil
     end
 end
-
-
--- ズームモードをスイッチする
-function toggleZoomMode()
-    if isZoomMode then
-        exitZoomMode()
-    else
-        enterZoomMode()
-    end
-end
-
--- ズームモードに入る
-function enterZoomMode()
-    isZoomMode = true
-    lastMousePosition = hs.mouse.absolutePosition()
-	totalMovementY = 0.0
-	zoomExecThreshold = 0.0
-    showTempAlert("Zoom Mode ON", 0.4)
-    startInactivityTimer()
-end
-
--- ズームモードから出る
-function exitZoomMode()
-    isZoomMode = false
-    showTempAlert("Zoom Mode OFF", 0.4)
-    if inactivityTimer then
-        inactivityTimer:stop()
-        inactivityTimer = nil
-    end
-end
-
-
 
 
 
@@ -129,71 +60,106 @@ end
 function startInactivityTimer()
     if inactivityTimer then inactivityTimer:stop() end
     inactivityTimer = hs.timer.doAfter(autoExitDuration, function()
-        if isScrollMode then
-            exitScrollMode()
-		elseif isZoomMode then
-			exitZoomMode()
+        if isScrollAndZoomMode then
+            exitScrollAndZoomMode()
         end
     end)
 end
 
 -- マウス移動を監視
 mouseTracker = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(event)
-    if not isScrollMode and not isZoomMode then return false end
+    if not isScrollAndZoomMode then return false end
+
+	if not isScrollMode then
+		isScrollMode = true
+		return true
+	end
 
     local currentPosition = hs.mouse.absolutePosition()
     if lastMousePosition then
+		-- マウスの移動量を得る
 		local dx = event:getProperty(hs.eventtap.event.properties['mouseEventDeltaX'])
 		--local dx = currentPosition.x - lastMousePosition.x
 		local dy = event:getProperty(hs.eventtap.event.properties['mouseEventDeltaY'])
 		--local dy = currentPosition.y - lastMousePosition.y
-
 		--print(string.format("Mouse moved: dx = %.2f, dy = %.2f", dx, dy))
 		
-		-- スクロール
-		if isScrollMode then
-
-			-- スクロールイベント送信（dyは方向反転）
-			hs.eventtap.event.newScrollEvent({ -dx * scrollSpeed, dy * scrollSpeed }, {}, "pixel"):post()
-
-		-- ズーム
-		else
-			totalMovementY = totalMovementY + dy
-			--print(string.format("Mouse moved: dy = %.2f, total = %.2f", dy, totalMovementY))
-			-- 拡大 or 縮小
-			if dy > 0 and totalMovementY > zoomExecThreshold + zoomExecResolution then
-				-- ズームインを実行
-				hs.eventtap.keyStroke({"cmd"}, ";")
-				-- 閾値を更新
-				zoomExecThreshold = zoomExecThreshold + zoomExecResolution
-			elseif dy < 0 and totalMovementY < zoomExecThreshold - zoomExecResolution then
-				-- ズームアウトを実行
-				hs.eventtap.keyStroke({"cmd"}, "-")
-				-- 閾値を更新
-				zoomExecThreshold = zoomExecThreshold - zoomExecResolution
-			end
-		end
+		-- スクロールイベント送信（dyは方向反転）
+		hs.eventtap.event.newScrollEvent({ -dx * scrollSpeed, dy * scrollSpeed }, {}, "pixel"):post()
 
 		-- カーソルは元の位置に戻す
 		hs.mouse.absolutePosition(lastMousePosition)
-		--hs.mouse.absolutePosition(lastMousePosition)
     end
 
     --lastMousePosition = currentPosition
+	
+	-- モードを延長
     startInactivityTimer()
     return false
 end)
 
 mouseTracker:start()
 
--- F1キーをスクロールのホットキーに割り当て
-hs.hotkey.bind({}, "F1", function()
-	controlMode("Scroll")
-    --toggleScrollMode()
+
+-- ホイールを監視
+wheelTracker = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(event)
+	-- もしスクロールモードが始まっていたらそちらを優先
+    if isScrollMode or not isScrollAndZoomMode then return false end
+
+	-- スクロール量を取得
+	local wheelVal = event:getProperty(hs.eventtap.event.properties.scrollWheelEventDeltaAxis1)
+
+	-- スクロールの向きによってズームインかアウトか決める
+	if wheelVal > 0 then
+		--print("zoom in")
+		hs.eventtap.keyStroke({'cmd'}, ';')
+	elseif wheelVal < 0 then
+		--print("zoom out")
+		hs.eventtap.keyStroke({'cmd'}, '-')
+	else
+
+	end
+
+	-- モードを延長
+    startInactivityTimer()
+	return false
 end)
 
--- F2キーをズームのホットキーに割り当て
-hs.hotkey.bind({}, "F2", function()
-	controlMode("Zoom")
-    --toggleScrollMode()
+wheelTracker:start()
+
+
+
+-- F1キーをスクロールのホットキーに割り当て
+hs.hotkey.bind({}, "F5", function()
+	toggleScrollAndZoom()
 end)
+
+
+
+
+
+
+
+-- 変換キーを押したら「かな入力」に切り替える（macOSのIME）
+-- 変換キーの keyCode は環境により異なる（Karabiner EventViewer で確認）
+-- 一般的には keyCode = 102（JISキーボードの変換キー）
+local IME_KANA_KEYCODE = 138  -- 変換キーの keyCode をここに指定
+hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
+	if event:getKeyCode() == IME_KANA_KEYCODE then
+		hs.keycodes.setInputMethod("com.apple.inputmethod.Kotoeri.Japanese")  -- 日本語入力に切り替え
+		return true
+	end
+	return false
+end):start()
+
+
+-- 無変換キーや英数キーの keyCode（例: 104）は環境により異なるので確認してください
+local EISUU_KEYCODE = 139  -- 無変換キーや英数キーの keyCode
+hs.eventtap.new({hs.eventtap.event.types.keyDown}, function(event)
+  if event:getKeyCode() == EISUU_KEYCODE then
+    hs.keycodes.setInputMethod("com.apple.keylayout.ABC")  -- 英字入力に切り替え
+    return true  -- macOS のデフォルト動作をブロック
+  end
+  return false
+end):start()
+
