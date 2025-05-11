@@ -1,60 +1,81 @@
-local scrollMode = false
-local zoomMode = false
-local undoMode = false
+-- スクロールモード制御フラグ
+local isScrollMode = false
+local lastMousePosition = nil
+local inactivityTimer = nil
+local scrollSpeed = 10  -- スクロールの感度（大きくすると速くなる）
 
--- 変数の監視
--- F1キーを押すたびにモードをトグル
+local alertId = nil
+
+function toggleScrollMode()
+    if isScrollMode then
+        exitScrollMode()
+    else
+        enterScrollMode()
+    end
+end
+
+function enterScrollMode()
+    isScrollMode = true
+    lastMousePosition = hs.mouse.absolutePosition()
+    showTempAlert("Scroll Mode ON", 0.4)
+    startInactivityTimer()
+end
+
+function exitScrollMode()
+    isScrollMode = false
+    showTempAlert("Scroll Mode OFF", 0.4)
+    if inactivityTimer then
+        inactivityTimer:stop()
+        inactivityTimer = nil
+    end
+end
+
+function showTempAlert(message, duration)
+    if alertId then
+        hs.alert.closeSpecific(alertId)
+    end
+    alertId = hs.alert.show(message, {}, hs.screen.mainScreen(), duration)
+end
+
+function startInactivityTimer()
+    if inactivityTimer then inactivityTimer:stop() end
+    inactivityTimer = hs.timer.doAfter(1, function()
+        if isScrollMode then
+            exitScrollMode()
+        end
+    end)
+end
+
+-- マウス移動を監視
+mouseTracker = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(event)
+    if not isScrollMode then return false end
+
+    local currentPosition = hs.mouse.absolutePosition()
+    if lastMousePosition then
+        local dx = event:getProperty(hs.eventtap.event.properties['mouseEventDeltaX'])
+        --local dx = currentPosition.x - lastMousePosition.x
+        local dy = event:getProperty(hs.eventtap.event.properties['mouseEventDeltaY'])
+        --local dy = currentPosition.y - lastMousePosition.y
+
+        --print(string.format("Mouse moved: dx = %.2f, dy = %.2f", dx, dy))
+
+        -- スクロールイベント送信（dyは方向反転）
+        hs.eventtap.event.newScrollEvent({ -dx * scrollSpeed, -dy * scrollSpeed }, {}, "pixel"):post()
+
+		-- カーソルは元の位置に戻す
+		hs.mouse.absolutePosition(lastMousePosition)
+		--hs.mouse.absolutePosition(lastMousePosition)
+    end
+
+    --lastMousePosition = currentPosition
+    startInactivityTimer()
+    return false
+end)
+
+mouseTracker:start()
+
+-- F1キーをホットキーに割り当て
 hs.hotkey.bind({}, "F1", function()
-    scrollMode = not scrollMode
-    print("Scroll mode: ", scrollMode)
-    --hs.alert.show("Scroll mode: " .. (scrollMode and "ON" or "OFF"), 0.3)
-end)
-hs.hotkey.bind({}, "F2", function()
-    zoomMode = not zoomMode
-    print("Zoom mode: ", zoomMode)
-    --hs.alert.show("Zoom mode: " .. (zoomMode and "ON" or "OFF"), 0.3)
-end)
-hs.hotkey.bind({}, "F3", function()
-    undoMode = not undoMode
-    --hs.alert.show("undo mode: " .. (undoMode and "ON" or "OFF"), 0.3)
+    toggleScrollMode()
 end)
 
-
--- マウス移動を監視してスクロールに変換
-local eventTap = hs.eventtap.new({hs.eventtap.event.types.mouseMoved}, function(e)
-    if scrollMode then
-        local dx = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaX)
-        local dy = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaY)
-        print(dx, dy)
-        hs.eventtap.scrollWheel({-dy, -dx}, {}, "pixel")
-        return true
-    elseif zoomMode then
-        local dx = e:getProperty(hs.eventtap.event.properties.mouseEventDeltaX)
-        print(dx)
-        if dx > 0 then
-            print("zoom in")
-            hs.eventtap.keyStroke({"cmd"}, ";")
-        elseif dx < 0 then
-            print("zoom out")
-            hs.eventtap.keyStroke({"cmd"}, "-")
-        else
-            print("not zoom") 
-        end
-        return true
-    end
-    return false
-end):start()
-
--- スクロールホイールで Command+Z / Y
-local scrollTap = hs.eventtap.new({hs.eventtap.event.types.scrollWheel}, function(e)
-    if undoMode then
-        local dy = e:getProperty(hs.eventtap.event.properties.scrollWheelEventDeltaAxis1)
-        if dy > 0 then
-            hs.eventtap.keyStroke({"cmd","shift"}, "z")
-        elseif dy < 0 then
-            hs.eventtap.keyStroke({"cmd"}, "z")
-        end
-        return true
-    end
-    return false
-end):start()
